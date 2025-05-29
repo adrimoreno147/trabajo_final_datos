@@ -13,15 +13,12 @@
   barrios <- read_xlsx('./barrios.xlsx')
   
   renta <- read.csv('./datos_renta.csv', sep = ';')
-
-
   
   
   barrios_sf <- barrios %>%
     mutate(geometry = geojson_sf(geo_shape)$geometry) %>%  # extrae solo la geometría
     st_sf(crs = 4326)
 
-  
   
   rentas_2022 <- renta %>%
     rename(Codigo_distrito = Distritos,
@@ -34,25 +31,16 @@
     ungroup()
   
   
-  
-  # En barrios_sf2 (o donde proceda), transforma a integer
+  # Transformamos a integer
   barrios_sf2 <- barrios_sf2 %>%
     mutate(Codigo_distrito = as.integer(Codigo_distrito))
   
-  # En rentas_2022 (si fuera character)
   rentas_2022 <- rentas_2022 %>%
     mutate(Codigo_distrito = as.integer(Codigo_distrito))
   
-  # Ahora el join funciona correctamente
+  # Realizamos el join
   mapa_sf <- barrios_sf2 %>%
     left_join(rentas_2022, by = "Codigo_distrito")
-  
-  
-
-  
-  mapa_sf <- barrios_sf2 %>%
-    left_join(rentas_2022, by = "Codigo_distrito")
-  
 
 
 mapa_sf <- mapa_sf %>%
@@ -144,21 +132,20 @@ mapa_sf <- mapa_sf %>%
   
   
   ###################################### gráfico de densidad ################################
-  # 1. Leer tu base de salones
   salones <- read_xlsx("ubi_salones.xlsx")
   
-  # 2. Convertir a objeto sf con CRS compatible (WGS84)
+  # Convertimos a objeto sf con CRS compatible
   salones_sf <- st_as_sf(datos_salones, coords = c("latitud", "longitud"), crs = 4326)
 
-  # 4. Unir cada salón al barrio donde se encuentra
+  # Unimos cada salón al barrio donde se encuentra
   salones_con_barrios <- st_join(salones_sf, barrios_sf, left = FALSE)
   
   
-  
+  # unificamos CRS
   barrios_sf <- st_transform(barrios_sf, crs = 4326)
   salones_sf <- st_transform(salones_sf, crs = 4326)
   
-  # Obtener coordenadas de los salones en formato data.frame
+  # Obtenemos coordenadas de los salones en formato data.frame
   coords <- salones_con_barrios %>% 
     st_coordinates() %>% 
     as.data.frame()
@@ -170,7 +157,7 @@ mapa_sf <- mapa_sf %>%
   salones_sf$lon <- coords_salones$Y
   salones_sf$lat <- coords_salones$X
   
-  # Crear el mapa interactivo
+  # Creamos el mapa interactivo
   leaflet() %>%
     addProviderTiles(providers$CartoDB.Positron) %>%
     
@@ -198,8 +185,53 @@ mapa_sf <- mapa_sf %>%
     )
   
   
+  
+  ####################################### mapa institutos #####################################
+  edu <- read_xls('./centros_educativos.xls')
+  head(edu)
+  
+  # Filtramos los insitutos de educación secundaria en el municipio València
+  table(edu$Denominacion_Generica_ES)
+  edu_secundaria <- edu %>%
+    filter(grepl("SECUNDARIA", Denominacion_Generica_ES),
+           Localidad == "VALÈNCIA")
+  
+  # Creamos el mapa interactivo
+  leaflet() %>%
+    addProviderTiles(providers$CartoDB.Positron) %>%
+    
+    # Polígonos: barrios
+    addPolygons(data = barrios_sf2,
+                color = "#000000", weight = 1,
+                fillColor = "#FFFFFF", fillOpacity = 0.1) %>%
+    
+    # Puntos: centros educativos
+    addCircleMarkers(data = edu_secundaria,
+                     radius = .5,
+                     color = "#08519c",  # azul oscuro
+                     fillOpacity = 0.8) %>%
+    
+    # Puntos: salones de juego
+    addCircleMarkers(data = salones_sf,
+                     radius = 3,
+                     color = "#e41a1c", fillColor = "#e41a1c",
+                     fillOpacity = 0.8,
+                     label = ~nombre,
+                     group = "Salones de juego") %>%
+    
+    # Centrar vista en València
+    setView(lng = mean(st_coordinates(st_centroid(st_union(barrios_sf)))[,1]),
+            lat = mean(st_coordinates(st_centroid(st_union(barrios_sf)))[,2]),
+            zoom = 13)
+  
+  
+  
   ################################### mapa deportes ######################
+  
+  # Generamos la bouning box
   bbox_valencia <- osmdata::getbb("Valencia")
+  
+  # Generamos los puntos de las pistas de deportes
   deportes_vlc <- bbox_valencia %>%
     osmdata::opq() %>%
     osmdata::add_osm_feature(key = "leisure", value = "pitch")
@@ -208,18 +240,19 @@ mapa_sf <- mapa_sf %>%
   deportes_vlc <- osmdata::osmdata_sf(deportes_vlc)
   deportes_vlc_points <- deportes_vlc$osm_points
   
-  # Asegúrate de que ambos datasets estén en el mismo CRS
-  barrios_sf <- st_transform(barrios_sf, 4326)  # Si no lo están ya
+  # Uificamos CRS
+  barrios_sf <- st_transform(barrios_sf, 4326) 
   deportes_vlc_points <- st_transform(deportes_vlc_points, 4326)
   
-  # 2. Reconstrucción del sf usando coords = c("longitud", "latitud")
+  # Reconstruimos el sf usando coords = c("longitud", "latitud")
   salones_sf <- st_as_sf(
     datos_salones,
-    coords = c("longitud", "latitud"),  # ¡orden correcto: lon, lat!
-    crs    = 4326,                      # WGS84 (long-lat)
-    remove = FALSE                      # conserva columnas originales
+    coords = c("longitud", "latitud"),  
+    crs    = 4326,                      
+    remove = FALSE                     
   )
   
+  # Generamos el maa interactivo
   leaflet() %>%
     addProviderTiles(providers$CartoDB.Positron) %>%
     
@@ -244,47 +277,6 @@ mapa_sf <- mapa_sf %>%
       label       = ~nombre)%>%
     
     # Vista centrada en Valencia
-    setView(lng = mean(st_coordinates(st_centroid(st_union(barrios_sf)))[,1]),
-            lat = mean(st_coordinates(st_centroid(st_union(barrios_sf)))[,2]),
-            zoom = 13)
-
-  
-  
-  ####################################### mapa institutos #####################################
-  edu <- read_xls('./centros_educativos.xls')
-  head(edu)
-            
-  
-  
-  table(edu$Denominacion_Generica_ES)
-  edu_secundaria <- edu %>%
-    filter(grepl("SECUNDARIA", Denominacion_Generica_ES),
-           Localidad == "VALÈNCIA")
-  
-
-  leaflet() %>%
-    addProviderTiles(providers$CartoDB.Positron) %>%
-    
-    # Polígonos: barrios
-    addPolygons(data = barrios_sf2,
-                color = "#000000", weight = 1,
-                fillColor = "#FFFFFF", fillOpacity = 0.1) %>%
-    
-    # Puntos: centros educativos
-    addCircleMarkers(data = edu_secundaria,
-                     radius = .5,
-                     color = "#08519c",  # azul oscuro
-                     fillOpacity = 0.8) %>%
-    
-    # Puntos: salones de juego
-    addCircleMarkers(data = salones_sf,
-                     radius = 3,
-                     color = "#e41a1c", fillColor = "#e41a1c",
-                     fillOpacity = 0.8,
-                     label = ~nombre,
-                     group = "Salones de juego") %>%
-    
-    # Centrar vista en València
     setView(lng = mean(st_coordinates(st_centroid(st_union(barrios_sf)))[,1]),
             lat = mean(st_coordinates(st_centroid(st_union(barrios_sf)))[,2]),
             zoom = 13)
