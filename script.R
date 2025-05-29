@@ -252,7 +252,7 @@ mapa_sf <- mapa_sf %>%
     remove = FALSE                     
   )
   
-  # Generamos el maa interactivo
+  # Generamos el mapa interactivo
   leaflet() %>%
     addProviderTiles(providers$CartoDB.Positron) %>%
     
